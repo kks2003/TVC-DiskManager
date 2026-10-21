@@ -1,0 +1,14 @@
+{
+  "name": "upm_manager",
+  "version": "1.0.0",
+  "description": "Videoton TVC UPM Disk Manager",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc && node dist/test_runner.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
