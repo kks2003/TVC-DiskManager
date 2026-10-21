@@ -1,8 +1,13 @@
 # Videoton TVC Lemezkezelő (TVC Disk Manager)
 
+[![GitHub Pages](https://img.shields.io/badge/Online%20Webverzi%C3%B3-Megnyit%C3%A1s%20b%C3%B6ng%C3%A9sz%C5%91ben-00d2ff?style=for-the-badge&logo=github)](https://kks2003.github.io/TVC-DiskManager/)
+
+> 🚀 **Közvetlen online futtatás (telepítés nélkül):**  
+> 👉 **[https://kks2003.github.io/TVC-DiskManager/](https://kks2003.github.io/TVC-DiskManager/)**
+
 Böngészőben futó, önálló lemezkezelő és karbantartó szoftver a **Videoton TV-Computer (TVC)** hajlékony mágneslemezes képfájljaihoz (**UPM / CP/M 2.2** és **VT-DOS / FAT12**).
 
-A szoftver nem igényel semmilyen telepítést vagy szerveroldali hátteret: a lefordított **`TVC_DiskManager.html`** (vagy `index.html`) közvetlenül megnyitható bármilyen modern webböngészőben (Chrome, Firefox, Edge, Safari), és teljesen offline működik.
+A szoftver nem igényel semmilyen telepítést vagy szerveroldali hátteret: a fenti linken azonnal használható online, vagy a letöltött **`TVC_DiskManager.html`** (illetve `index.html`) fájl közvetlenül megnyitható bármilyen webböngészőben (Chrome, Firefox, Edge, Safari), és teljesen offline működik.
 
 ---
 
