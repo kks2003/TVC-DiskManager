@@ -58,6 +58,27 @@ function runTest() {
   console.log(`Törlés utáni fájlok száma: ${newDisk.getFiles().length}`);
   console.log(`Szabad blokkok száma újra: ${newDisk.getFreeBlockIndices().length}`);
 
+  // 6b. Szöveges fájl (days.txt) CP/M rekord-padding és visszatöltés teszt
+  console.log(`\n6b. Szöveges fájl CP/M rekord-padding teszt (days.txt 2349 B -> 19 rekord -> 2349 B)`);
+  const daysPath = fs.existsSync('UPM/days.txt') ? 'UPM/days.txt' : (fs.existsSync('../UPM/days.txt') ? '../UPM/days.txt' : '');
+  if (daysPath) {
+    const daysOrig = fs.readFileSync(daysPath);
+    console.log(`Eredeti days.txt mérete: ${daysOrig.length} bájt`);
+    newDisk.writeFile("DAYS.TXT", daysOrig, 0);
+
+    const fInfo = newDisk.getFiles().find(f => f.fullName === 'DAYS.TXT');
+    console.log(`Lemezre írva: logikai méret = ${fInfo?.logicalBytes} B (${fInfo?.totalRecords} rekord), pontos méret = ${fInfo?.exactBytes} B`);
+    const readBack = newDisk.readFile("DAYS.TXT", 0);
+    console.log(`Visszaolvasott méret: ${readBack.length} bájt`);
+    if (readBack.length !== daysOrig.length) {
+      throw new Error(`Méreteltérés! Eredeti: ${daysOrig.length}, visszaolvasott: ${readBack.length}`);
+    }
+    const match = Buffer.from(readBack).equals(daysOrig);
+    console.log(`✓ Visszaolvasott tartalom bájtrol bájtra megegyezik: ${match}`);
+    if (!match) throw new Error("A visszatöltött fájl tartalma eltér az eredetitől!");
+    newDisk.deleteFile("DAYS.TXT", 0);
+  }
+
   // 7. CAS Header Repair & AutoRun teszt
   console.log(`\n7. CAS Header Repair (CasRepair1.0 reverse engineering) teszt`);
   // Létrehozunk egy szimulált hibás CAS fájlt (összesen 300 bájt: 128B CAS fejléc + 16B TVC fejléc + 156B adat)

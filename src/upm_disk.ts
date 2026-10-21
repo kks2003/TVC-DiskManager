@@ -222,6 +222,16 @@ export class UpmDisk {
         }
       }
 
+      // Ha nem CAS fájl, de szöveges fájl: számítsuk ki a valós szöveghosszt (Ctrl+Z és 0xE5 padding levágásával)
+      if (!isCas && this.isTextExt(first.ext) && allBlocks.length > 0) {
+        try {
+          const raw = this.readEntriesData(entries, totalRecords);
+          exactBytes = this.trimTextData(raw).length;
+        } catch {
+          exactBytes = logicalBytes;
+        }
+      }
+
       this.files.push({
         user: first.user,
         name: first.name,
@@ -280,21 +290,16 @@ export class UpmDisk {
   }
 
   /**
-   * Teljes fájl tartalmának kiolvasása
+   * Extent bejegyzések adatainak összefűzése
    */
-  public readFile(fullName: string, user: number = 0, exactCas: boolean = true): Uint8Array {
-    const file = this.files.find(f => f.fullName.toUpperCase() === fullName.toUpperCase() && f.user === user);
-    if (!file) {
-      throw new Error(`Fájl nem található: [User ${user}] ${fullName}`);
-    }
-
-    const totalLogicalSize = file.totalRecords * 128;
+  public readEntriesData(entries: RawDirEntry[], totalRecords: number): Uint8Array {
+    const totalLogicalSize = totalRecords * 128;
     const result = new Uint8Array(totalLogicalSize);
     let outOffset = 0;
-    let recordsRemaining = file.totalRecords;
+    let recordsRemaining = totalRecords;
 
-    for (const ent of file.entries) {
-      let entRecords = (ent === file.entries[file.entries.length - 1]) ? ent.rc : 128;
+    for (const ent of entries) {
+      let entRecords = (ent === entries[entries.length - 1]) ? ent.rc : 128;
       let entRecOffset = 0;
 
       for (const blk of ent.blocks) {
@@ -309,14 +314,69 @@ export class UpmDisk {
         recordsRemaining -= recsFromBlock;
       }
     }
+    return result;
+  }
+
+  public isTextExt(ext: string): boolean {
+    const textExts = new Set([
+      'TXT', 'BAS', 'ASM', 'MAC', 'SUB', 'PAS', 'C', 'H', 'PRN', 'DOC',
+      'INC', 'HLP', 'ME', 'BAT', 'INI', 'JSON', 'MD', 'LOG', 'HEX', 'GEN'
+    ]);
+    return textExts.has(ext.toUpperCase().trim());
+  }
+
+  public isTextFile(fileName: string, data: Uint8Array): boolean {
+    const ext = fileName.split('.').pop()?.toUpperCase() || '';
+    if (this.isTextExt(ext)) return true;
+
+    const sampleSize = Math.min(data.length, 512);
+    if (sampleSize === 0) return false;
+    let textCount = 0;
+    for (let i = 0; i < sampleSize; i++) {
+      const b = data[i];
+      if (b === 0x00) return false;
+      if (b === 0x09 || b === 0x0A || b === 0x0D || (b >= 0x20 && b <= 0x7E) || b >= 0x80) {
+        textCount++;
+      }
+    }
+    return (textCount / sampleSize) > 0.85;
+  }
+
+  public trimTextData(data: Uint8Array): Uint8Array {
+    // 1. Ha van benne 0x1A (CP/M EOF / Ctrl+Z), ott ér véget a szöveg
+    const eofIdx = data.indexOf(0x1A);
+    let end = eofIdx !== -1 ? eofIdx : data.length;
+
+    // 2. Levágjuk a záró 0xE5 (CP/M formázási padding) és 0x00 bájtokat a szöveg végéről
+    while (end > 0 && (data[end - 1] === 0xE5 || data[end - 1] === 0x00 || data[end - 1] === 0x1A)) {
+      end--;
+    }
+    return data.subarray(0, end);
+  }
+
+  /**
+   * Teljes fájl tartalmának kiolvasása
+   */
+  public readFile(fullName: string, user: number = 0, exactCas: boolean = true): Uint8Array {
+    const file = this.files.find(f => f.fullName.toUpperCase() === fullName.toUpperCase() && f.user === user);
+    if (!file) {
+      throw new Error(`Fájl nem található: [User ${user}] ${fullName}`);
+    }
+
+    const raw = this.readEntriesData(file.entries, file.totalRecords);
 
     if (exactCas && file.isCas && file.casInfo) {
-      if (file.casInfo.exactLength > 0 && file.casInfo.exactLength <= result.length) {
-        return result.subarray(0, file.casInfo.exactLength);
+      if (file.casInfo.exactLength > 0 && file.casInfo.exactLength <= raw.length) {
+        return raw.subarray(0, file.casInfo.exactLength);
       }
     }
 
-    return result;
+    // Ha nem CAS, de szöveges fájl (pl. TXT, BAS, ASM, SUB)
+    if (this.isTextFile(file.fullName, raw)) {
+      return this.trimTextData(raw);
+    }
+
+    return raw;
   }
 
   /**
@@ -502,7 +562,19 @@ export class UpmDisk {
       this.deleteFile(existing.fullName, user);
     }
 
-    const totalRecords = Math.ceil(uploadData.length / 128);
+    // CP/M szöveg szabvány: ha a fájl szöveg és a hossza nem osztható 128-cal,
+    // a rekord maradékát 0x1A (Ctrl+Z) CP/M EOF bájtokkal töltjük fel 0xE5 helyett!
+    const isText = this.isTextFile(fileName, uploadData);
+    let writeData = uploadData;
+    const remainder = uploadData.length % 128;
+    if (isText && remainder !== 0) {
+      const padLen = 128 - remainder;
+      writeData = new Uint8Array(uploadData.length + padLen);
+      writeData.set(uploadData, 0);
+      writeData.fill(0x1A, uploadData.length);
+    }
+
+    const totalRecords = Math.ceil(writeData.length / 128);
     const recordsPerBlock = this.format.blockSize / 128; // 16
     const neededBlocks = Math.max(1, Math.ceil(totalRecords / recordsPerBlock));
 
@@ -525,7 +597,7 @@ export class UpmDisk {
     let dataOffset = 0;
     for (let i = 0; i < neededBlocks; i++) {
       const blk = allocatedBlocks[i];
-      const slice = uploadData.subarray(dataOffset, dataOffset + this.format.blockSize);
+      const slice = writeData.subarray(dataOffset, dataOffset + this.format.blockSize);
       this.writeBlock(blk, slice);
       dataOffset += this.format.blockSize;
     }
